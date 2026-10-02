@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>慈明高中 115學年度第一學期 第一次期中考 座位表產生器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @media print {
+      body {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-page {
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 !important;
+        width: 100% !important;
+        padding: 10mm !important;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
+    }
+    .seat-table th, .seat-table td {
+      border: 1.5px solid #1f2937;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .seat-cell {
+      min-height: 37px;
+      font-size: 13pt !important;
+      line-height: 1.35;
+    }
+    /* 拖曳與視覺互動樣式 */
+    .draggable-seat {
+      cursor: grab;
+      user-select: none;
+      transition: background-color 0.15s ease, transform 0.15s ease;
+    }
+    .draggable-seat:active {
+      cursor: grabbing;
+    }
+    .drag-source {
+      opacity: 0.35;
+      background-color: #f3f4f6 !important;
+    }
+    .drag-over {
+      outline: 2.5px dashed #4f46e5 !important;
+      background-color: #e0e7ff !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen p-4 md:p-8">
+
+  <div class="max-w-6xl mx-auto">
+    <!-- 控制面板 (列印時隱藏) -->
+    <div class="no-print bg-white rounded-xl shadow-md border border-slate-200 p-6 mb-8">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b pb-4">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            📋 慈明高中考場座位表自動編排工具-可拖曳座位版
+          </h1>
+          <p class="text-sm text-slate-500 mt-1">支援自訂排×列維度、第1排左右方位、依照座號智能排位與自由拖曳調位</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg shadow flex items-center gap-2 transition">
+            🖨️ 一鍵列印 / 存為 PDF
+          </button>
+          <button onclick="resetData()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded-lg transition text-sm">
+            重設範例
+          </button>
+        </div>
+      </div>
+
+      <!-- 基本資訊設定 -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">學年度與考別標題</label>
+          <input id="titleInput" type="text" value="慈明高中115學年度第一學期 第一次期中考  班   級 座位表" 
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" oninput="renderTable()">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">班級名稱</label>
+          <input id="classInput" type="text" value="高一忠班" 
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" oninput="renderTable()">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">導師姓名</label>
+          <input id="teacherInput" type="text" value="陳老師" 
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" oninput="renderTable()">
+        </div>
+      </div>
+
+      <!-- 科別設定 (預留人數科別欄位) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">第一組科別名稱</label>
+          <input id="deptAInput" type="text" value="電商科" placeholder="例：電商科" 
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" oninput="updateStatsDisplay()">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">併班第二組科別名稱（併班時填寫）</label>
+          <input id="deptBInput" type="text" value="" placeholder="若無併班可留空" 
+                 class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none" oninput="updateStatsDisplay()">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">第1排所在方向（左右設定）</label>
+          <select id="firstColSide" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium" onchange="updateGridSettings()">
+            <option value="right">右側（由右向左：第1排在最右邊，預設）</option>
+            <option value="left">左側（由左向右：第1排在最左邊）</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">排位規則演算法</label>
+          <select id="sortRule" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" onchange="autoFillSeats()">
+            <option value="by-number-col">依照座號：依序直排（第1排前到後，接續下一排）</option>
+            <option value="by-number-row">依照座號：由前至後橫排（第1組排完，接續下一排）</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 座位規格 (排 × 列) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">座位排數（直行 / 橫向欄數）</label>
+          <div class="flex items-center gap-2">
+            <input id="colsInput" type="number" min="1" max="15" value="8" 
+                   class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-indigo-700" 
+                   onchange="updateGridSettings()">
+            <span class="text-xs text-slate-500 whitespace-nowrap">排</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">每排座位數（橫列 / 縱深排數）</label>
+          <div class="flex items-center gap-2">
+            <input id="rowsInput" type="number" min="1" max="15" value="6" 
+                   class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold text-indigo-700" 
+                   onchange="updateGridSettings()">
+            <span class="text-xs text-slate-500 whitespace-nowrap">列</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 學生名冊快速匯入（支援獨立按鈕分別填入） -->
+      <div class="mt-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+          <label class="block text-xs font-bold text-slate-700">
+            👥 學生名冊快速匯入（可分別解析填入，名單 B 自動從新的一排開始安排）
+          </label>
+          <div class="text-xs text-indigo-600 font-medium bg-indigo-50 px-2.5 py-1 rounded border border-indigo-100">
+            格式：每行「座號 姓名」或「姓名」
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <!-- 名單 A -->
+          <div class="bg-white p-3 rounded-lg border border-indigo-100 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-semibold text-indigo-700">第一組名冊（班級 A）</span>
+                <span id="rosterACount" class="text-[11px] text-slate-500">0 人</span>
+              </div>
+              <textarea id="rosterInput" rows="4" class="w-full border rounded-lg p-2 text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50 mb-2" 
+                        placeholder="第一組（例：忠班）
+1 王小明
+2 陳小美
+3 張大華
+..."></textarea>
+            </div>
+            <button onclick="importRosterA()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-2 px-3 rounded-lg font-medium shadow-sm transition flex items-center justify-center gap-1.5">
+              📥 解析並填入座位表（第一組名單）
+            </button>
+          </div>
+
+          <!-- 名單 B (併班獨立按鈕) -->
+          <div class="bg-white p-3 rounded-lg border border-emerald-100 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-semibold text-emerald-700">第二組名冊（班級 B，從全新一排開始排）</span>
+                <span id="rosterBCount" class="text-[11px] text-slate-500">0 人</span>
+              </div>
+              <textarea id="rosterInputB" rows="4" class="w-full border rounded-lg p-2 text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50 mb-2" 
+                        placeholder="第二組（例：孝班，無併班可留空）
+1 李大維
+2 林玉婷
+3 黃志強
+..."></textarea>
+            </div>
+            <button onclick="importRosterB()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2 px-3 rounded-lg font-medium shadow-sm transition flex items-center justify-center gap-1.5">
+              📥 解析並填入座位表（第二組名單，從新的一排開始）
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-slate-200">
+          <div class="flex flex-wrap gap-2">
+            <button onclick="clearSeats()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs px-3 py-1.5 rounded-lg font-medium border border-rose-200 transition">
+              清空座位內容
+            </button>
+          </div>
+          <div class="text-xs text-slate-600 font-medium bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+            💡 提示：點擊「第一組」會清空並從第 1 排開始；點擊「第二組」會保留第一組並自動跳至全新一排開始安排！
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 訊息提示 Toast -->
+    <div id="toast" class="fixed top-5 right-5 z-50 transform transition-all duration-300 opacity-0 pointer-events-none bg-slate-900 text-white text-xs py-2 px-4 rounded-lg shadow-lg flex items-center gap-2">
+      <span id="toastMsg">提示訊息</span>
+    </div>
+
+    <!-- 正式考場座位表主體 (A4 紙張規格預覽與列印範圍) -->
+    <div id="printArea" class="print-page bg-white p-8 rounded-lg shadow border border-slate-300 mx-auto max-w-[880px]">
+      <!-- 表頭標題 -->
+      <div class="mb-4 text-center">
+        <h2 id="displayTitle" class="text-2xl font-bold tracking-wider text-black pb-1">慈明高中115學年度第一學期 第一次期中考  班   級 座位表</h2>
+      </div>
+
+      <!-- 講桌 -->
+      <div class="w-2/5 mx-auto text-center font-bold text-[14pt] py-2.5 min-h-[44px] flex items-center justify-center border-2 border-black mb-3 bg-slate-50 tracking-widest">
+        講　　桌
+      </div>
+
+      <!-- 座位表表格 (動態排 × 動態列) -->
+      <table class="seat-table w-full border-collapse border-2 border-black text-sm text-black table-fixed">
+        <thead id="tableHead">
+          <!-- 動態生成表頭 -->
+        </thead>
+        <tbody id="tableBody">
+          <!-- 動態生成座位內容 -->
+        </tbody>
+      </table>
+
+      <!-- 表格下方：人數統計與科別資訊欄 (支援分開統計與預留科別) -->
+      <div id="statsRow" class="mt-4 px-4 font-bold text-[14pt] text-black flex flex-wrap justify-between items-center gap-2 border-b border-black/20 pb-2">
+        <div id="displayDeptStats" class="flex flex-wrap items-center gap-6">
+          <!-- 動態渲染分組科別與人數 -->
+        </div>
+        <div id="displayTotalCount" class="text-slate-700 font-semibold text-[13pt]">
+          <!-- 動態渲染總人數 -->
+        </div>
+      </div>
+
+      <!-- 頁尾資訊 -->
+      <div class="flex justify-between items-center mt-4 px-4 font-bold text-[14pt] text-black">
+        <div>班級：<span id="displayClass" class="underline underline-offset-4 decoration-1">高一忠班</span></div>
+        <div id="displayCapacity" class="text-xs text-slate-500 font-normal no-print">目前座位容量：48 位</div>
+        <div>導師：<span id="displayTeacher" class="underline underline-offset-4 decoration-1">陳老師</span></div>
+      </div>
+
+      <!-- 右下角自動列印日期與程式製作資訊 (文字大小 10pt) -->
+      <div class="text-right text-[10pt] text-slate-600 font-normal mt-3 px-4 flex justify-end items-center gap-4">
+        <span>Power by ：電子商務科</span>
+        <span>列印日期：<span id="displayPrintDate"></span></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 動態行列與排位設定
+    let COLS = 8;
+    let ROWS = 6;
+    // 陣列結構：seatData[c][r]，其中 c 為視覺欄位 (0 ~ COLS-1)，r 為列位 (0 ~ ROWS-1)
+    let seatData = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => ({ no: '', name: '' })));
+
+    // 統計各名冊人數
+    let rosterCountA = 0;
+    let rosterCountB = 0;
+
+    // 拖曳狀態儲存
+    let draggedCoords = null;
+    let isDragging = false;
+
+    // Toast 提示工具
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.innerText = message;
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2400);
+    }
+
+    // 載入預設範例資料
+    function loadInitialData() {
+      // 預設第1排在右側 (index 7)
+      const firstColIndex = (document.getElementById('firstColSide').value === 'right') ? COLS - 1 : 0;
+      seatData[firstColIndex][0] = { no: '1號', name: '王小明' };
+      seatData[firstColIndex][1] = { no: '2號', name: '陳小美' };
+      renderTable();
+    }
+
+    // 處理自訂排數與列數調整
+    function updateGridSettings() {
+      const newCols = Math.max(1, Math.min(15, parseInt(document.getElementById('colsInput').value) || 8));
+      const newRows = Math.max(1, Math.min(15, parseInt(document.getElementById('rowsInput').value) || 6));
+      document.getElementById('colsInput').value = newCols;
+      document.getElementById('rowsInput').value = newRows;
+
+      // 保留原有數據建立新矩陣
+      const newSeatData = Array.from({ length: newCols }, (colArr, c) => 
+        Array.from({ length: newRows }, (rowArr, r) => {
+          if (c < COLS && r < ROWS && seatData[c] && seatData[c][r]) {
+            return { ...seatData[c][r] };
+          }
+          return { no: '', name: '' };
+        })
+      );
+
+      COLS = newCols;
+      ROWS = newRows;
+      seatData = newSeatData;
+      renderTable();
+      showToast(`已調整為 ${COLS} 排 × ${ROWS} 列（共 ${COLS * ROWS} 個座位）`);
+    }
+
+    // 渲染整個座位表
+    function renderTable() {
+      document.getElementById('displayTitle').innerText = document.getElementById('titleInput').value;
+      document.getElementById('displayClass').innerText = document.getElementById('classInput').value;
+      document.getElementById('displayTeacher').innerText = document.getElementById('teacherInput').value;
+      document.getElementById('displayCapacity').innerText = `目前座位容量：${COLS * ROWS} 位 (${COLS}排 × ${ROWS}列)`;
+      updatePrintDate();
+      updateStatsDisplay();
+
+      const isRightSide = document.getElementById('firstColSide').value === 'right';
+      const thead = document.getElementById('tableHead');
+      const tbody = document.getElementById('tableBody');
+
+      // 產生表頭：根據第1排左右位置計算排名
+      thead.innerHTML = '';
+      const headTr = document.createElement('tr');
+      headTr.className = 'bg-slate-100 font-bold text-center text-[14pt]';
+
+      for (let c = 0; c < COLS; c++) {
+        const th = document.createElement('th');
+        th.className = 'py-2 px-1 text-[14pt] font-bold';
+        // 若第1排在右：c=0 為第COLS排，c=COLS-1 為第1排
+        // 若第1排在左：c=0 為第1排，c=COLS-1 為第COLS排
+        const colNumber = isRightSide ? (COLS - c) : (c + 1);
+        th.innerText = `第${colNumber}排`;
+        headTr.appendChild(th);
+      }
+      thead.appendChild(headTr);
+
+      // 產生表格主體
+      tbody.innerHTML = '';
+      for (let r = 0; r < ROWS; r++) {
+        // 座號列
+        const trNo = document.createElement('tr');
+        // 姓名列
+        const trName = document.createElement('tr');
+
+        for (let c = 0; c < COLS; c++) {
+          const item = seatData[c][r];
+
+          // 座號格（高度保持 37px，字體大小設為 13PT）
+          const tdNo = document.createElement('td');
+          tdNo.className = 'seat-cell h-[37px] text-[13pt] font-semibold bg-slate-50 cursor-pointer draggable-seat transition-colors';
+          tdNo.contentEditable = 'true';
+          tdNo.innerText = item.no || '';
+          tdNo.dataset.col = c;
+          tdNo.dataset.row = r;
+          tdNo.dataset.type = 'no';
+          attachCellEvents(tdNo, c, r);
+          trNo.appendChild(tdNo);
+
+          // 姓名格（高度保持 43px，字體大小設為 13PT）
+          const tdName = document.createElement('td');
+          tdName.className = 'seat-cell h-[43px] text-[13pt] font-medium cursor-pointer draggable-seat transition-colors';
+          tdName.contentEditable = 'true';
+          tdName.innerText = item.name || '';
+          tdName.dataset.col = c;
+          tdName.dataset.row = r;
+          tdName.dataset.type = 'name';
+          attachCellEvents(tdName, c, r);
+          trName.appendChild(tdName);
+        }
+
+        tbody.appendChild(trNo);
+        tbody.appendChild(trName);
+      }
+    }
+
+    // 高亮座位整組（座號與姓名）輔助函式
+    function highlightSeat(c, r, className, add = true) {
+      const cells = document.querySelectorAll(`.seat-cell[data-col="${c}"][data-row="${r}"]`);
+      cells.forEach(el => {
+        if (add) el.classList.add(className);
+        else el.classList.remove(className);
+      });
+    }
+
+    // 綁定編輯與拖曳事件
+    function attachCellEvents(element, c, r) {
+      element.draggable = true;
+
+      const updateData = (val) => {
+        if (isDragging) return;
+        const type = element.dataset.type;
+        if (type === 'no') {
+          seatData[c][r].no = val;
+        } else {
+          seatData[c][r].name = val;
+        }
+      };
+
+      element.addEventListener('input', (e) => {
+        updateData(e.target.innerText.trim());
+      });
+
+      element.addEventListener('blur', (e) => {
+        updateData(e.target.innerText.trim());
+      });
+
+      // 拖曳開始
+      element.addEventListener('dragstart', (e) => {
+        isDragging = true;
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+          document.activeElement.blur();
+        }
+        draggedCoords = { c, r };
+        highlightSeat(c, r, 'drag-source', true);
+        e.dataTransfer.setData('text/plain', JSON.stringify({ c, r }));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      // 拖曳結束清除高亮
+      element.addEventListener('dragend', () => {
+        document.querySelectorAll('.drag-source').forEach(el => el.classList.remove('drag-source'));
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        setTimeout(() => {
+          isDragging = false;
+        }, 100);
+      });
+
+      // 拖曳懸停在目標格
+      element.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        highlightSeat(c, r, 'drag-over', true);
+      });
+
+      // 離開目標格
+      element.addEventListener('dragleave', () => {
+        highlightSeat(c, r, 'drag-over', false);
+      });
+
+      // 拖曳放開 (Drop) 執行移動座位（徹底清除原表格內容，無殘留）
+      element.addEventListener('drop', (e) => {
+        e.preventDefault();
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+        if (!draggedCoords) return;
+        const targetC = c;
+        const targetR = r;
+
+        // 若不是同一個位置，將原座位整組移至新位置，並徹底清空原座位
+        if (draggedCoords.c !== targetC || draggedCoords.r !== targetR) {
+          const sourceData = { ...seatData[draggedCoords.c][draggedCoords.r] };
+
+          // 移到新位置
+          seatData[targetC][targetR] = { no: sourceData.no || '', name: sourceData.name || '' };
+
+          // 徹底清空原本位置，不殘留任何舊資料
+          seatData[draggedCoords.c][draggedCoords.r] = { no: '', name: '' };
+
+          renderTable();
+          showToast(`已移動至新位置，原座位內容已完全清除`);
+        }
+        draggedCoords = null;
+        setTimeout(() => {
+          isDragging = false;
+        }, 100);
+      });
+    }
+
+    // 純數字提取工具，用於精確座號排序
+    function parseSeatNumber(noStr) {
+      if (!noStr) return 9999;
+      const matched = noStr.toString().match(/\d+/);
+      return matched ? parseInt(matched[0], 10) : 9999;
+    }
+
+    // 解析名單字串為學生陣列
+    function parseRosterText(rawText, prefix = '') {
+      if (!rawText || !rawText.trim()) return [];
+      const lines = rawText.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      const studentList = [];
+
+      lines.forEach((line, index) => {
+        const parts = line.split(/[\s,\t]+/);
+        if (parts.length >= 2) {
+          const rawNo = parts[0];
+          const noFormatted = rawNo.includes('號') ? rawNo : `${rawNo}號`;
+          const finalNo = prefix ? `${prefix}${noFormatted}` : noFormatted;
+          studentList.push({ no: finalNo, name: parts[1] });
+        } else if (parts.length === 1) {
+          const finalNo = prefix ? `${prefix}${index + 1}號` : `${index + 1}號`;
+          studentList.push({ no: finalNo, name: parts[0] });
+        }
+      });
+      return studentList;
+    }
+
+    // 取得當前第 1 排至第 N 排的視覺直行遍歷序列
+    function getColumnSequence() {
+      const isRightSide = document.getElementById('firstColSide').value === 'right';
+      const colSequence = [];
+      if (isRightSide) {
+        for (let c = COLS - 1; c >= 0; c--) colSequence.push(c);
+      } else {
+        for (let c = 0; c < COLS; c++) colSequence.push(c);
+      }
+      return colSequence;
+    }
+
+    // 匯入第一組名冊（清空現有座位，由第1排開始依規則填入）
+    function importRosterA() {
+      const textA = document.getElementById('rosterInput').value;
+      const listA = parseRosterText(textA);
+      rosterCountA = listA.length;
+      document.getElementById('rosterACount').innerText = `${listA.length} 人`;
+
+      if (listA.length === 0) {
+        showToast('請在「第一組名冊」輸入學生名單！');
+        updateStatsDisplay();
+        return;
+      }
+
+      // 清空目前所有座位，同時將第二組計數歸零
+      rosterCountB = 0;
+      document.getElementById('rosterBCount').innerText = `0 人`;
+      seatData = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => ({ no: '', name: '' })));
+
+      // 照座號小到大排序
+      const sortedA = [...listA].sort((a, b) => parseSeatNumber(a.no) - parseSeatNumber(b.no));
+      const rule = document.getElementById('sortRule').value;
+      const colSequence = getColumnSequence();
+
+      let orderCoords = [];
+      if (rule === 'by-number-row') {
+        // 橫向依座號排列：排滿一排（所有欄位）後，接續下一排（下一橫列）
+        for (let r = 0; r < ROWS; r++) {
+          colSequence.forEach(c => orderCoords.push({ c, r }));
+        }
+      } else {
+        // 依照座號：依序直排（第1排前到後，接續下一排）
+        colSequence.forEach(c => {
+          for (let r = 0; r < ROWS; r++) orderCoords.push({ c, r });
+        });
+      }
+
+      const capacity = COLS * ROWS;
+      sortedA.slice(0, capacity).forEach((st, idx) => {
+        if (idx < orderCoords.length) {
+          const { c, r } = orderCoords[idx];
+          seatData[c][r] = st;
+        }
+      });
+
+      renderTable();
+      showToast(`第一組已成功填入（共 ${sortedA.length} 人，依${rule === 'by-number-row' ? '橫排' : '直排'}規則排列）`);
+    }
+
+    // 匯入第二組名冊（接續全新的一排開始安排）
+    function importRosterB() {
+      const textB = document.getElementById('rosterInputB').value;
+      const listB = parseRosterText(textB);
+      rosterCountB = listB.length;
+      document.getElementById('rosterBCount').innerText = `${listB.length} 人`;
+
+      if (listB.length === 0) {
+        showToast('請在「第二組名冊」輸入學生名單！');
+        updateStatsDisplay();
+        return;
+      }
+
+      const sortedB = [...listB].sort((a, b) => parseSeatNumber(a.no) - parseSeatNumber(b.no));
+      const colSequence = getColumnSequence();
+      const rule = document.getElementById('sortRule').value;
+      let orderCoordsB = [];
+
+      if (rule === 'by-number-row') {
+        // 橫排模式：尋找第一組所佔用的最後一個橫列 (row)，第二組接續「全新的一排 (新的一列)」開始安排
+        let lastOccupiedRow = -1;
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            if (seatData[c][r].no || seatData[c][r].name) {
+              lastOccupiedRow = Math.max(lastOccupiedRow, r);
+            }
+          }
+        }
+
+        const startRow = lastOccupiedRow + 1;
+        if (startRow >= ROWS) {
+          showToast('目前座位表已沒有完整的「全新一排」可容納第二組名冊！請增加每排座位數（列數）。');
+          return;
+        }
+
+        // 從全新的一排開始，排滿一排後接續下一排
+        for (let r = startRow; r < ROWS; r++) {
+          colSequence.forEach(c => orderCoordsB.push({ c, r }));
+        }
+      } else {
+        // 直排模式：尋找尚未被使用的「全新一排 (全新直欄)」
+        let startingColIndexInSequence = -1;
+        for (let i = 0; i < colSequence.length; i++) {
+          const c = colSequence[i];
+          const isColCompletelyEmpty = seatData[c].every(cell => !cell.no && !cell.name);
+          if (isColCompletelyEmpty) {
+            startingColIndexInSequence = i;
+            break;
+          }
+        }
+
+        if (startingColIndexInSequence === -1) {
+          showToast('目前座位表已沒有完整的「全新一排」可容納第二組名冊！請增加座位排數。');
+          return;
+        }
+
+        const remainingCols = colSequence.slice(startingColIndexInSequence);
+        remainingCols.forEach(c => {
+          for (let r = 0; r < ROWS; r++) orderCoordsB.push({ c, r });
+        });
+      }
+
+      let studentIdx = 0;
+      orderCoordsB.forEach(({ c, r }) => {
+        if (studentIdx < sortedB.length) {
+          seatData[c][r] = sortedB[studentIdx++];
+        }
+      });
+
+      renderTable();
+      showToast(`第二組已成功填入（共 ${studentIdx} 人，已接續新的一排開始${rule === 'by-number-row' ? '橫排' : '直排'}安排）`);
+    }
+
+    // 更新下方人數與科別統計顯示
+    function updateStatsDisplay() {
+      const deptA = document.getElementById('deptAInput')?.value.trim() || '第一組';
+      const deptB = document.getElementById('deptBInput')?.value.trim() || '第二組';
+      const statsContainer = document.getElementById('displayDeptStats');
+      const totalContainer = document.getElementById('displayTotalCount');
+      if (!statsContainer || !totalContainer) return;
+
+      const hasGroupB = rosterCountB > 0 || (document.getElementById('deptBInput')?.value.trim() !== '');
+
+      if (!hasGroupB) {
+        // 單組模式
+        statsContainer.innerHTML = `
+          <div>科別：<span class="underline underline-offset-4 decoration-1 font-bold">${deptA}</span></div>
+          <div>應試人數：<span class="underline underline-offset-4 decoration-1 font-bold">${rosterCountA}</span> 人</div>
+        `;
+        totalContainer.innerHTML = ``;
+      } else {
+        // 兩組併班分開統計模式
+        statsContainer.innerHTML = `
+          <div>第一組科別：<span class="underline underline-offset-4 decoration-1 font-bold">${deptA}</span>（<span class="text-indigo-800">${rosterCountA}</span> 人）</div>
+          <div>第二組科別：<span class="underline underline-offset-4 decoration-1 font-bold">${deptB}</span>（<span class="text-emerald-800">${rosterCountB}</span> 人）</div>
+        `;
+        totalContainer.innerHTML = `合計：<span class="underline underline-offset-4 decoration-1 font-bold text-black">${rosterCountA + rosterCountB}</span> 人`;
+      }
+    }
+
+    // 當切換規則下拉選單時自動重新排列（同時排入名單 A 與 名單 B）
+    function autoFillSeats() {
+      const textA = document.getElementById('rosterInput').value.trim();
+      const textB = document.getElementById('rosterInputB').value.trim();
+      if (textA) {
+        importRosterA();
+        if (textB) {
+          importRosterB();
+        }
+      }
+    }
+
+    // 清空座位
+    function clearSeats() {
+      seatData = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => ({ no: '', name: '' })));
+      rosterCountA = 0;
+      rosterCountB = 0;
+      document.getElementById('rosterACount').innerText = '0 人';
+      document.getElementById('rosterBCount').innerText = '0 人';
+      renderTable();
+      showToast('已清空所有座位內容');
+    }
+
+    // 自動更新右下角列印日期（格式：YYYY/MM/DD）
+    function updatePrintDate() {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const dateEl = document.getElementById('displayPrintDate');
+      if (dateEl) {
+        dateEl.innerText = `${y}/${m}/${d}`;
+      }
+    }
+
+    // 監聽列印事件，列印前再次確保日期為當日最新
+    window.addEventListener('beforeprint', updatePrintDate);
+
+    function resetData() {
+      document.getElementById('colsInput').value = 8;
+      document.getElementById('rowsInput').value = 6;
+      document.getElementById('firstColSide').value = 'right';
+      document.getElementById('sortRule').value = 'by-number-col';
+      document.getElementById('deptAInput').value = '電商科';
+      document.getElementById('deptBInput').value = '';
+      document.getElementById('rosterInput').value = '1 王小明\n2 陳小美\n3 張大華\n4 李大同\n5 林美麗\n6 趙志剛\n7 孫悟空\n8 豬八戒';
+      document.getElementById('rosterInputB').value = '';
+      document.getElementById('rosterACount').innerText = '8 人';
+      document.getElementById('rosterBCount').innerText = '0 人';
+      COLS = 8;
+      ROWS = 6;
+      seatData = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => ({ no: '', name: '' })));
+      importRosterA();
+      showToast('已重設為慈明高中標準範例');
+    }
+
+    // 初始化載入
+    function loadInitialData() {
+      document.getElementById('deptAInput').value = '電商科';
+      document.getElementById('deptBInput').value = '';
+      document.getElementById('rosterInput').value = '1 王小明\n2 陳小美\n3 張大華\n4 李大同\n5 林美麗\n6 趙志剛\n7 孫悟空\n8 豬八戒';
+      document.getElementById('rosterACount').innerText = '8 人';
+      importRosterA();
+    }
+
+    loadInitialData();
+  </script>
+</body>
+</html>
